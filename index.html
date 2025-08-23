@@ -1,0 +1,186 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JC Decaux Quality Inspection</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background:#f2f2f2; padding:15px; }
+    .container { max-width: 800px; margin:auto; background: white; border-radius: 10px; padding: 20px; }
+    .header { text-align: center; background: #1e3c72; color: white; padding: 20px; border-radius: 10px 10px 0 0; }
+    .inspection-item { border-left: 4px solid #667eea; margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; }
+    .photo-slot { aspect-ratio: 1; border: 2px dashed #ccc; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+    .photo-slot img { width: 100%; height: 100%; object-fit: cover; }
+    .save-section { text-align: center; margin-top: 20px; }
+    .save-btn { background: #2b5ce6; color: white; padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
+    .notification { position: fixed; top: 20px; right: 20px; padding: 10px 15px; border-radius: 6px; color: white; font-weight: bold; z-index:999; }
+    .notification.success { background: #28a745; }
+    .notification.error { background: #dc3545; }
+    #save-options { display:none; margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; text-align:left; font-size:14px;}
+    #save-options a { display:inline-block; background:#2b5ce6; color:white; padding:8px 12px; text-decoration:none; border-radius:6px; margin:5px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🏗️ JC Decaux Quality Inspection</h1>
+    </div>
+
+    <div>
+      <label>Date</label>
+      <input type="date" id="date">
+      <label>Technician</label>
+      <input type="text" id="technician">
+    </div>
+
+    <div id="items-container"></div>
+
+    <div class="save-section">
+      <button class="save-btn" onclick="saveReport()">💾 Save Report</button>
+      <div id="save-options">
+        <h4>📱 iPhone Save Options:</h4>
+        <p>Tap and hold the link to choose your folder:</p>
+        <a id="direct-download" href="#" download="#">⬇️ Download Report</a>
+
+        <p><strong>Method 1 - Files App:</strong></p>
+        <button class="save-btn" style="font-size:14px;padding:8px 12px;" onclick="saveToFiles()">📁 Save to Files App</button>
+
+        <p><strong>Method 2 - Share Options:</strong></p>
+        <button class="save-btn" style="font-size:14px;padding:8px 12px;" onclick="shareReport()">📤 Share / Save via iOS Share</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('date').value = new Date().toISOString().split('T')[0];
+      for (let i=1;i<=4;i++) createInspectionItem(i);
+    });
+
+    function createInspectionItem(num) {
+      const container=document.getElementById('items-container');
+      const div=document.createElement('div');
+      div.className='inspection-item';
+      div.innerHTML=`
+        <h3>Inspection ${num}</h3>
+        <label>Furniture Index</label>
+        <input type="text" id="index-${num}">
+        <label>Comments</label>
+        <textarea id="comments-${num}"></textarea>
+        <input type="file" id="photos-${num}" accept="image/*" multiple onchange="handlePhotos(event,${num})">
+        <div id="photos-grid-${num}" style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;"></div>`;
+      container.appendChild(div);
+    }
+
+    function handlePhotos(e,num){
+      const grid=document.getElementById(`photos-grid-${num}`);
+      grid.innerHTML='';
+      const files = [...e.target.files].slice(0,6);
+      if (e.target.files.length > 6) showNotification("⚠️ Max 6 photos per inspection", "error");
+
+      files.forEach((f)=>{
+        const reader=new FileReader();
+        reader.onload=ev=>{
+          const slot=document.createElement('div');
+          slot.className='photo-slot';
+          slot.innerHTML=`<img src="${ev.target.result}">`;
+          slot.dataset.fileData=ev.target.result;
+          grid.appendChild(slot);
+        };
+        reader.readAsDataURL(f);
+      });
+      showNotification("✅ Photos added","success");
+    }
+
+    async function saveReport() {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p','mm','a4');
+      let y = 10;
+
+      pdf.setFontSize(18);
+      pdf.text("JC Decaux Quality Inspection", 10, y); y += 10;
+
+      pdf.setFontSize(12);
+      const date = document.getElementById('date').value || new Date().toISOString().split('T')[0];
+      const technician = document.getElementById('technician').value || 'Not specified';
+      pdf.text(`Date: ${date}`, 10, y); y += 6;
+      pdf.text(`Technician: ${technician}`, 10, y); y += 10;
+
+      for (let i=1;i<=4;i++){
+        const idx=document.getElementById(`index-${i}`).value||"Not specified";
+        const com=document.getElementById(`comments-${i}`).value||"No comments";
+
+        pdf.setFontSize(14); pdf.text(`Inspection ${i}`, 10, y); y+=6;
+        pdf.setFontSize(11);
+        pdf.text(`Furniture Index: ${idx}`,10,y); y+=6;
+
+        const commentLines = pdf.splitTextToSize(com, 180);
+        pdf.text(commentLines, 10, y); y += commentLines.length * 6;
+
+        const slots = document.querySelectorAll(`#photos-grid-${i} .photo-slot`);
+        for (const s of slots){
+          if(s.dataset.fileData){
+            const img=s.dataset.fileData;
+            const props=pdf.getImageProperties(img);
+            const w=180, h=(props.height*180)/props.width;
+            if(y+h>280){ pdf.addPage(); y=10; }
+            pdf.addImage(img,'JPEG',10,y,w,h);
+            y+=h+5;
+          }
+        }
+        y+=5;
+      }
+
+      const fileName = `JC_Decaux_Inspection_${date.replace(/-/g,'_')}.pdf`;
+      window.currentPDF = pdf;
+      window.currentFileName = fileName;
+
+      // Generate blob and update link
+      const pdfBlob = pdf.output('blob');
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      const directDownloadLink = document.getElementById('direct-download');
+      directDownloadLink.href = blobUrl;
+      directDownloadLink.download = fileName;
+
+      document.getElementById('save-options').style.display = 'block';
+      showNotification("✅ PDF ready - tap link to save on iPhone", "success");
+    }
+
+    function saveToFiles() {
+      if (!window.currentPDF) { showNotification("❌ Generate report first","error"); return; }
+      const pdfBlob = window.currentPDF.output('blob');
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = window.currentFileName;
+      link.click();
+      setTimeout(()=>URL.revokeObjectURL(blobUrl),1000);
+      showNotification("📁 Tap 'Save' in Files App","success");
+    }
+
+    function shareReport() {
+      if (!window.currentPDF) { showNotification("❌ Generate report first","error"); return; }
+      const pdfBlob = window.currentPDF.output('blob');
+      if (navigator.share){
+        const file = new File([pdfBlob], window.currentFileName, { type: 'application/pdf' });
+        navigator.share({ title:'JC Decaux Report', text:'Inspection PDF', files:[file] })
+          .then(()=>showNotification("📤 Shared successfully","success"))
+          .catch(()=>showNotification("❌ Share failed, try Direct Download","error"));
+      } else {
+        // Fallback: open PDF in new tab
+        const blobUrl = URL.createObjectURL(pdfBlob);
+        window.open(blobUrl);
+        showNotification("📤 PDF opened - use Share/Save manually","success");
+      }
+    }
+
+    function showNotification(msg,type){
+      const n=document.createElement("div");
+      n.className=`notification ${type}`; n.textContent=msg;
+      document.body.appendChild(n);
+      setTimeout(()=>n.remove(),3000);
+    }
+  </script>
+</body>
+</html>
